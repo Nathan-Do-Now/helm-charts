@@ -1,4 +1,4 @@
-suite: Full Snapshot
+suite: No backend
 tests:
   - it: matches the snapshot
     asserts:
@@ -17,7 +17,7 @@ tests:
       configurations:
         otelUrl: "otelCollector:4317"
         persistence: enable
-      server: api.armosec.io
+      server:
       clusterName: kind-kind
       global:
         networkPolicy:

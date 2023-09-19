@@ -17,7 +17,7 @@ matches the snapshot:
     data:
       clusterData: |
         {
-          "serviceDiscovery": true,
+          "serviceDiscovery": false,
           "gatewayWebsocketURL": "gateway:8001",
           "gatewayRestURL": "gateway:8002",
           "vulnScanURL": "kubevuln:8080",
@@ -34,20 +34,13 @@ matches the snapshot:
           "otelCollector": true,
           "nodeAgent": "true",
           "maxImageSize": 5.36870912e+09,
-          "keepLocal": false,
+          "keepLocal": true,
           "scanTimeout": "5m",
           "listingURL": "http://grype-offline-db:80/listing.json",
           "relevantImageVulnerabilitiesConfiguration": "enable"
         }
-      metrics: ""
-      services: ""
     kind: ConfigMap
     metadata:
-      annotations:
-        helm.sh/hook: pre-install,pre-upgrade
-        helm.sh/hook-delete-policy: before-hook-creation
-        helm.sh/hook-weight: "0"
-        helm.sh/resource-policy: keep
       labels:
         app: ks-cloud-config
         tier: ks-control-plane
@@ -59,7 +52,7 @@ matches the snapshot:
       capabilities: |
         {
           "capabilities":{"configurationScan":"enable","continuousScan":"enable","nodeScan":"enable","relevancy":"enable","vulnerabilityScan":"enable"},
-          "components":{"gateway":{"enabled":true},"hostScanner":{"enabled":true},"kollector":{"enabled":true},"kubescape":{"enabled":true},"kubescapeScheduler":{"enabled":true},"kubevuln":{"enabled":true},"kubevulnScheduler":{"enabled":true},"nodeAgent":{"enabled":true},"operator":{"enabled":true},"otelCollector":{"enabled":true},"serviceDiscovery":{"enabled":true},"storage":{"enabled":true}},
+          "components":{"gateway":{"enabled":false},"hostScanner":{"enabled":true},"kollector":{"enabled":false},"kubescape":{"enabled":true},"kubescapeScheduler":{"enabled":false},"kubevuln":{"enabled":true},"kubevulnScheduler":{"enabled":false},"nodeAgent":{"enabled":true},"operator":{"enabled":true},"otelCollector":{"enabled":true},"serviceDiscovery":{"enabled":false},"storage":{"enabled":true}},
           "configurations":{"otelUrl":"otelCollector:4317","persistence":"enable"}
         }
     kind: ConfigMap
@@ -70,174 +63,6 @@ matches the snapshot:
       name: ks-capabilities
       namespace: kubescape
   4: |
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      labels:
-        app: gateway
-        app.kubernetes.io/instance: RELEASE-NAME
-        app.kubernetes.io/name: gateway
-        helm.sh/chart: kubescape-operator-1.15.3
-        tier: ks-control-plane
-      name: gateway
-      namespace: kubescape
-    spec:
-      replicas: 1
-      revisionHistoryLimit: 2
-      selector:
-        matchLabels:
-          app.kubernetes.io/instance: RELEASE-NAME
-          app.kubernetes.io/name: gateway
-          tier: ks-control-plane
-      strategy:
-        rollingUpdate:
-          maxSurge: 0%
-          maxUnavailable: 100%
-        type: RollingUpdate
-      template:
-        metadata:
-          labels:
-            app: gateway
-            app.kubernetes.io/instance: RELEASE-NAME
-            app.kubernetes.io/name: gateway
-            helm.sh/chart: kubescape-operator-1.15.3
-            helm.sh/revision: "0"
-            tier: ks-control-plane
-        spec:
-          automountServiceAccountToken: false
-          containers:
-            - args:
-                - -alsologtostderr
-                - -v=4
-                - 2>&1
-              env:
-                - name: GOMEMLIMIT
-                  value: 30MiB
-                - name: KS_LOGGER_LEVEL
-                  value: info
-                - name: KS_LOGGER_NAME
-                  value: zap
-                - name: WEBSOCKET_PORT
-                  value: "8001"
-                - name: HTTP_PORT
-                  value: "8002"
-                - name: ACCOUNT_ID
-                  value: 9e6c0c2c-6bd0-4919-815b-55030de7c9a0
-                - name: OTEL_COLLECTOR_SVC
-                  value: otel-collector:4317
-              image: quay.io/kubescape/gateway:v0.1.15
-              imagePullPolicy: IfNotPresent
-              livenessProbe:
-                httpGet:
-                  path: /v1/liveness
-                  port: readiness-port
-                initialDelaySeconds: 3
-                periodSeconds: 3
-              name: gateway
-              ports:
-                - containerPort: 8000
-                  name: readiness-port
-                  protocol: TCP
-                - containerPort: 8001
-                  name: websocket
-                  protocol: TCP
-                - containerPort: 8002
-                  name: rest-api
-                  protocol: TCP
-              readinessProbe:
-                httpGet:
-                  path: /v1/readiness
-                  port: readiness-port
-                initialDelaySeconds: 10
-                periodSeconds: 5
-              resources:
-                limits:
-                  cpu: 100m
-                  memory: 50Mi
-                requests:
-                  cpu: 10m
-                  memory: 30Mi
-              securityContext:
-                allowPrivilegeEscalation: false
-                readOnlyRootFilesystem: true
-                runAsNonRoot: true
-              volumeMounts:
-                - mountPath: /etc/config
-                  name: ks-cloud-config
-                  readOnly: true
-                - mountPath: /etc/ssl/certs/proxy.crt
-                  name: proxy-secret
-                  subPath: proxy.crt
-          securityContext:
-            fsGroup: 65532
-            runAsUser: 65532
-          volumes:
-            - name: proxy-secret
-              secret:
-                secretName: kubescape-proxy-certificate
-            - configMap:
-                items:
-                  - key: clusterData
-                    path: clusterData.json
-                  - key: services
-                    path: services.json
-                name: ks-cloud-config
-              name: ks-cloud-config
-  5: |
-    apiVersion: networking.k8s.io/v1
-    kind: NetworkPolicy
-    metadata:
-      labels:
-        app: gateway
-        helm.sh/chart: kubescape-operator-1.15.3
-        tier: ks-control-plane
-      name: gateway
-      namespace: kubescape
-    spec:
-      egress:
-        - ports:
-            - port: 443
-              protocol: TCP
-      ingress:
-        - from:
-            - podSelector:
-                matchLabels:
-                  app.kubernetes.io/instance: kubescape
-                  app.kubernetes.io/name: operator
-                  tier: ks-control-plane
-          ports:
-            - port: websocket
-              protocol: TCP
-      podSelector:
-        matchLabels:
-          app.kubernetes.io/instance: RELEASE-NAME
-          app.kubernetes.io/name: gateway
-          tier: ks-control-plane
-      policyTypes:
-        - Ingress
-        - Egress
-  6: |
-    apiVersion: v1
-    kind: Service
-    metadata:
-      labels:
-        app: gateway
-      name: gateway
-      namespace: kubescape
-    spec:
-      ports:
-        - name: websocket
-          port: 8001
-          protocol: TCP
-          targetPort: 8001
-        - name: http
-          port: 8002
-          protocol: TCP
-          targetPort: 8002
-      selector:
-        app: gateway
-      type: ClusterIP
-  7: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -288,7 +113,7 @@ matches the snapshot:
               securityContext:
                 allowPrivilegeEscalation: false
                 runAsNonRoot: true
-  8: |
+  5: |
     apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
@@ -315,7 +140,7 @@ matches the snapshot:
           tier: ks-control-plane
       policyTypes:
         - Ingress
-  9: |
+  6: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -331,271 +156,7 @@ matches the snapshot:
       selector:
         app: grype-offline-db
       type: ClusterIP
-  10: |
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRole
-    metadata:
-      name: kollector
-    rules:
-      - apiGroups:
-          - ""
-        resources:
-          - pods
-          - namespaces
-          - cronjobs
-          - secrets
-          - nodes
-          - services
-        verbs:
-          - get
-          - watch
-          - list
-      - apiGroups:
-          - apps
-        resources:
-          - deployments
-          - statefulsets
-          - daemonsets
-          - replicasets
-        verbs:
-          - get
-          - watch
-          - list
-      - apiGroups:
-          - batch
-        resources:
-          - jobs
-          - cronjobs
-        verbs:
-          - get
-          - watch
-          - list
-  11: |
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRoleBinding
-    metadata:
-      name: kollector
-    roleRef:
-      apiGroup: rbac.authorization.k8s.io
-      kind: ClusterRole
-      name: kollector
-    subjects:
-      - kind: ServiceAccount
-        name: kollector
-        namespace: kubescape
-  12: |
-    apiVersion: networking.k8s.io/v1
-    kind: NetworkPolicy
-    metadata:
-      labels:
-        app: kollector
-        tier: ks-control-plane
-      name: kollector
-      namespace: kubescape
-    spec:
-      egress:
-        - ports:
-            - port: 443
-              protocol: TCP
-        - ports:
-            - port: 80
-              protocol: TCP
-          to:
-            - ipBlock:
-                cidr: 169.254.169.254/32
-      podSelector:
-        matchLabels:
-          app.kubernetes.io/instance: RELEASE-NAME
-          app.kubernetes.io/name: kollector
-          tier: ks-control-plane
-      policyTypes:
-        - Egress
-  13: |
-    apiVersion: v1
-    automountServiceAccountToken: false
-    kind: ServiceAccount
-    metadata:
-      labels:
-        app: kollector
-      name: kollector
-      namespace: kubescape
-  14: |
-    apiVersion: apps/v1
-    kind: StatefulSet
-    metadata:
-      labels:
-        app: kollector
-        app.kubernetes.io/instance: RELEASE-NAME
-        app.kubernetes.io/name: kollector
-        tier: ks-control-plane
-      name: kollector
-      namespace: kubescape
-    spec:
-      replicas: 1
-      selector:
-        matchLabels:
-          app.kubernetes.io/instance: RELEASE-NAME
-          app.kubernetes.io/name: kollector
-          tier: ks-control-plane
-      serviceName: ""
-      template:
-        metadata:
-          labels:
-            app: kollector
-            app.kubernetes.io/instance: RELEASE-NAME
-            app.kubernetes.io/name: kollector
-            helm.sh/chart: kubescape-operator-1.15.3
-            helm.sh/revision: "0"
-            tier: ks-control-plane
-        spec:
-          automountServiceAccountToken: true
-          containers:
-            - args:
-                - -alsologtostderr
-                - -v=4
-                - 2>&1
-              env:
-                - name: GOMEMLIMIT
-                  value: 100MiB
-                - name: KS_LOGGER_LEVEL
-                  value: info
-                - name: KS_LOGGER_NAME
-                  value: zap
-                - name: NAMESPACE
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: metadata.namespace
-                - name: ACCOUNT_ID
-                  value: 9e6c0c2c-6bd0-4919-815b-55030de7c9a0
-                - name: OTEL_COLLECTOR_SVC
-                  value: otel-collector:4317
-                - name: PRINT_REPORT
-                  value: "false"
-                - name: WAIT_BEFORE_REPORT
-                  value: "0"
-              image: quay.io/kubescape/kollector:v0.1.27
-              imagePullPolicy: IfNotPresent
-              livenessProbe:
-                httpGet:
-                  path: /v1/liveness
-                  port: readiness-port
-                initialDelaySeconds: 3
-                periodSeconds: 3
-              name: kollector
-              ports:
-                - containerPort: 8000
-                  name: readiness-port
-                  protocol: TCP
-              readinessProbe:
-                httpGet:
-                  path: /v1/readiness
-                  port: readiness-port
-                initialDelaySeconds: 10
-                periodSeconds: 5
-              resources:
-                limits:
-                  cpu: 500m
-                  memory: 500Mi
-                requests:
-                  cpu: 10m
-                  memory: 100Mi
-              securityContext:
-                allowPrivilegeEscalation: false
-                readOnlyRootFilesystem: true
-                runAsNonRoot: true
-                runAsUser: 100
-              volumeMounts:
-                - mountPath: /tmp
-                  name: tmp-dir
-                - mountPath: /etc/config
-                  name: ks-cloud-config
-                  readOnly: true
-                - mountPath: /etc/ssl/certs/proxy.crt
-                  name: proxy-secret
-                  subPath: proxy.crt
-          serviceAccountName: kollector
-          volumes:
-            - name: proxy-secret
-              secret:
-                secretName: kubescape-proxy-certificate
-            - emptyDir: {}
-              name: tmp-dir
-            - configMap:
-                items:
-                  - key: clusterData
-                    path: clusterData.json
-                  - key: services
-                    path: services.json
-                name: ks-cloud-config
-              name: ks-cloud-config
-  15: |
-    apiVersion: v1
-    data:
-      request-body.json: '{"commands":[{"CommandName":"kubescapeScan","args":{"scanV1": {}}}]}'
-    kind: ConfigMap
-    metadata:
-      labels:
-        app: kubescape-scheduler
-        tier: ks-control-plane
-      name: kubescape-scheduler
-      namespace: kubescape
-  16: |
-    apiVersion: batch/v1
-    kind: CronJob
-    metadata:
-      labels:
-        app: kubescape-scheduler
-        app.kubernetes.io/name: kubescape-scheduler
-        armo.tier: kubescape-scan
-        tier: ks-control-plane
-      name: kubescape-scheduler
-      namespace: kubescape
-    spec:
-      jobTemplate:
-        spec:
-          template:
-            metadata:
-              labels:
-                app: kubescape-scheduler
-                app.kubernetes.io/name: kubescape-scheduler
-                armo.tier: kubescape-scan
-            spec:
-              automountServiceAccountToken: false
-              containers:
-                - args:
-                    - -method=post
-                    - -scheme=http
-                    - -host=operator:4002
-                    - -path=v1/triggerAction
-                    - -headers="Content-Type:application/json"
-                    - -path-body=/home/ks/request-body.json
-                  image: quay.io/kubescape/http-request:v0.0.14
-                  imagePullPolicy: IfNotPresent
-                  name: kubescape-scheduler
-                  resources:
-                    limits:
-                      cpu: 10m
-                      memory: 20Mi
-                    requests:
-                      cpu: 1m
-                      memory: 10Mi
-                  securityContext:
-                    allowPrivilegeEscalation: false
-                    readOnlyRootFilesystem: true
-                    runAsNonRoot: true
-                    runAsUser: 100
-                  volumeMounts:
-                    - mountPath: /home/ks/request-body.json
-                      name: kubescape-scheduler
-                      readOnly: true
-                      subPath: request-body.json
-              restartPolicy: Never
-              volumes:
-                - configMap:
-                    name: kubescape-scheduler
-                  name: kubescape-scheduler
-      schedule: 1 2 3 4 5
-  17: |
+  7: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -771,7 +332,7 @@ matches the snapshot:
           - create
           - update
           - patch
-  18: |
+  8: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -784,7 +345,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: kubescape
         namespace: kubescape
-  19: |
+  9: |
     apiVersion: v1
     data:
       config.json: |
@@ -799,7 +360,7 @@ matches the snapshot:
         tier: ks-control-plane
       name: kubescape-config
       namespace: kubescape
-  20: |
+  10: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -912,9 +473,6 @@ matches the snapshot:
                   name: results
                 - mountPath: /home/nonroot/failed
                   name: failed
-                - mountPath: /etc/config
-                  name: ks-cloud-config
-                  readOnly: true
                 - mountPath: /etc/ssl/certs/proxy.crt
                   name: proxy-secret
                   subPath: proxy.crt
@@ -927,19 +485,13 @@ matches the snapshot:
                 name: kubescape-config
               name: kubescape-config-volume
             - configMap:
-                items:
-                  - key: services
-                    path: services.json
-                name: ks-cloud-config
-              name: ks-cloud-config
-            - configMap:
                 name: host-scanner-definition
               name: host-scanner-definition
             - emptyDir: {}
               name: results
             - emptyDir: {}
               name: failed
-  21: |
+  11: |
     apiVersion: v1
     data:
       host-scanner-yaml: |-
@@ -1031,7 +583,7 @@ matches the snapshot:
         tier: ks-control-plane
       name: host-scanner-definition
       namespace: kubescape
-  22: |
+  12: |
     apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
@@ -1064,7 +616,7 @@ matches the snapshot:
       policyTypes:
         - Ingress
         - Egress
-  23: |
+  13: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -1083,7 +635,7 @@ matches the snapshot:
           - list
           - patch
           - delete
-  24: |
+  14: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -1097,7 +649,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: kubescape
         namespace: kubescape
-  25: |
+  15: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -1114,7 +666,7 @@ matches the snapshot:
       selector:
         app: kubescape
       type: ClusterIP
-  26: |
+  16: |
     apiVersion: v1
     automountServiceAccountToken: false
     kind: ServiceAccount
@@ -1123,7 +675,7 @@ matches the snapshot:
         app: kubescape
       name: kubescape
       namespace: kubescape
-  27: |
+  17: |
     apiVersion: monitoring.coreos.com/v1
     kind: ServiceMonitor
     metadata:
@@ -1144,74 +696,7 @@ matches the snapshot:
       selector:
         matchLabels:
           app: kubescape
-  28: |
-    apiVersion: v1
-    data:
-      request-body.json: '{"commands":[{"commandName":"scan","designators":[{"designatorType":"Attributes","attributes":{}}]}]}'
-    kind: ConfigMap
-    metadata:
-      labels:
-        app: kubevuln-scheduler
-        tier: ks-control-plane
-      name: kubevuln-scheduler
-      namespace: kubescape
-  29: |
-    apiVersion: batch/v1
-    kind: CronJob
-    metadata:
-      labels:
-        app: kubevuln-scheduler
-        app.kubernetes.io/name: kubevuln-scheduler
-        armo.tier: vuln-scan
-        tier: ks-control-plane
-      name: kubevuln-scheduler
-      namespace: kubescape
-    spec:
-      jobTemplate:
-        spec:
-          template:
-            metadata:
-              labels:
-                app: kubevuln-scheduler
-                app.kubernetes.io/name: kubevuln-scheduler
-                armo.tier: vuln-scan
-            spec:
-              automountServiceAccountToken: false
-              containers:
-                - args:
-                    - -method=post
-                    - -scheme=http
-                    - -host=operator:4002
-                    - -path=v1/triggerAction
-                    - -headers="Content-Type:application/json"
-                    - -path-body=/home/ks/request-body.json
-                  image: quay.io/kubescape/http-request:v0.0.14
-                  imagePullPolicy: IfNotPresent
-                  name: kubevuln-scheduler
-                  resources:
-                    limits:
-                      cpu: 10m
-                      memory: 20Mi
-                    requests:
-                      cpu: 1m
-                      memory: 10Mi
-                  securityContext:
-                    allowPrivilegeEscalation: false
-                    readOnlyRootFilesystem: true
-                    runAsNonRoot: true
-                    runAsUser: 100
-                  volumeMounts:
-                    - mountPath: /home/ks/request-body.json
-                      name: kubevuln-scheduler
-                      readOnly: true
-                      subPath: request-body.json
-              restartPolicy: Never
-              volumes:
-                - configMap:
-                    name: kubevuln-scheduler
-                  name: kubevuln-scheduler
-      schedule: 1 2 3 4 5
-  30: |
+  18: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1239,7 +724,7 @@ matches the snapshot:
           - get
           - watch
           - list
-  31: |
+  19: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1252,7 +737,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: kubevuln
         namespace: kubescape
-  32: |
+  20: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -1363,13 +848,11 @@ matches the snapshot:
                 items:
                   - key: clusterData
                     path: clusterData.json
-                  - key: services
-                    path: services.json
                 name: ks-cloud-config
               name: ks-cloud-config
             - emptyDir: {}
               name: grype-db
-  33: |
+  21: |
     apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
@@ -1401,7 +884,7 @@ matches the snapshot:
       policyTypes:
         - Ingress
         - Egress
-  34: |
+  22: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -1417,7 +900,7 @@ matches the snapshot:
       selector:
         app: kubevuln
       type: ClusterIP
-  35: |
+  23: |
     apiVersion: v1
     automountServiceAccountToken: false
     kind: ServiceAccount
@@ -1426,7 +909,7 @@ matches the snapshot:
         app: kubevuln
       name: kubevuln
       namespace: kubescape
-  36: |
+  24: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1489,7 +972,7 @@ matches the snapshot:
           - watch
           - list
           - patch
-  37: |
+  25: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1502,7 +985,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: node-agent
         namespace: kubescape
-  38: |
+  26: |
     apiVersion: v1
     data:
       config.json: |
@@ -1516,7 +999,7 @@ matches the snapshot:
     metadata:
       name: node-agent
       namespace: kubescape
-  39: |
+  27: |
     apiVersion: apps/v1
     kind: DaemonSet
     metadata:
@@ -1628,8 +1111,6 @@ matches the snapshot:
                 items:
                   - key: clusterData
                     path: clusterData.json
-                  - key: services
-                    path: services.json
                 name: ks-cloud-config
               name: ks-cloud-config
             - configMap:
@@ -1666,13 +1147,13 @@ matches the snapshot:
             - name: proxy-secret
               secret:
                 secretName: kubescape-proxy-certificate
-  40: |
+  28: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
       name: node-agent
       namespace: kubescape
-  41: |
+  29: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -1725,7 +1206,7 @@ matches the snapshot:
           - watch
           - list
           - delete
-  42: |
+  30: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -1738,7 +1219,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: operator
         namespace: kubescape
-  43: |
+  31: |
     apiVersion: v1
     data:
       config.json: |
@@ -1750,7 +1231,7 @@ matches the snapshot:
     metadata:
       name: operator
       namespace: kubescape
-  44: |
+  32: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -1840,10 +1321,6 @@ matches the snapshot:
                   name: ks-cloud-config
                   readOnly: true
                   subPath: clusterData.json
-                - mountPath: /etc/config/services.json
-                  name: ks-cloud-config
-                  readOnly: true
-                  subPath: services.json
                 - mountPath: /etc/config/capabilities.json
                   name: ks-capabilities
                   readOnly: true
@@ -1869,8 +1346,6 @@ matches the snapshot:
                 items:
                   - key: clusterData
                     path: clusterData.json
-                  - key: services
-                    path: services.json
                 name: ks-cloud-config
               name: ks-cloud-config
             - configMap:
@@ -1885,7 +1360,7 @@ matches the snapshot:
                     path: config.json
                 name: operator
               name: config
-  45: |
+  33: |
     apiVersion: v1
     data:
       cronjobTemplate: "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: kubescape-scheduler\n  namespace: kubescape\n  labels:\n    app: kubescape-scheduler\n    tier: ks-control-plane\n    armo.tier: \"kubescape-scan\"\nspec:\n  schedule: \"1 2 3 4 5\"\n  jobTemplate:\n    spec:\n      template:\n        metadata:\n          labels:\n            armo.tier: \"kubescape-scan\"\n        spec:\n          containers:\n          - name: kubescape-scheduler\n            image: \"quay.io/kubescape/http-request:v0.0.14\"\n            imagePullPolicy: IfNotPresent\n            securityContext:\n              allowPrivilegeEscalation: false\n              readOnlyRootFilesystem: true\n              runAsNonRoot: true\n              runAsUser: 100\n            resources:\n              limits:\n                cpu: 10m\n                memory: 20Mi\n              requests:\n                cpu: 1m\n                memory: 10Mi\n            args: \n              - -method=post\n              - -scheme=http\n              - -host=operator:4002\n              - -path=v1/triggerAction\n              - -headers=\"Content-Type:application/json\"\n              - -path-body=/home/ks/request-body.json\n            volumeMounts:\n              - name: \"request-body-volume\"\n                mountPath: /home/ks/request-body.json\n                subPath: request-body.json\n                readOnly: true\n          restartPolicy: Never\n          automountServiceAccountToken: false\n          volumes:\n            - name: \"request-body-volume\" # placeholder\n              configMap:\n                name: kubescape-scheduler"
@@ -1896,7 +1371,7 @@ matches the snapshot:
         tier: ks-control-plane
       name: kubescape-cronjob-template
       namespace: kubescape
-  46: |
+  34: |
     apiVersion: v1
     data:
       cronjobTemplate: "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: kubevuln-scheduler\n  namespace: kubescape\n  labels:\n    app: kubevuln-scheduler\n    tier: ks-control-plane\n    armo.tier: \"vuln-scan\"\nspec:\n  schedule: \"1 2 3 4 5\" \n  jobTemplate:\n    spec:\n      template:\n        metadata:\n          labels:\n            armo.tier: \"vuln-scan\"\n        spec:\n          containers:\n          - name: kubevuln-scheduler\n            image: \"quay.io/kubescape/http-request:v0.0.14\"\n            imagePullPolicy: IfNotPresent\n            securityContext:\n              allowPrivilegeEscalation: false\n              readOnlyRootFilesystem: true\n              runAsNonRoot: true\n              runAsUser: 100\n            resources:\n              limits:\n                cpu: 10m\n                memory: 20Mi\n              requests:\n                cpu: 1m\n                memory: 10Mi\n            args: \n              - -method=post\n              - -scheme=http\n              - -host=operator:4002\n              - -path=v1/triggerAction\n              - -headers=\"Content-Type:application/json\"\n              - -path-body=/home/ks/request-body.json\n            volumeMounts:\n              - name: \"request-body-volume\"\n                mountPath: /home/ks/request-body.json\n                subPath: request-body.json\n                readOnly: true\n          restartPolicy: Never\n          automountServiceAccountToken: false\n          volumes:\n            - name: \"request-body-volume\" # placeholder\n              configMap:\n                name: kubevuln-scheduler"
@@ -1907,7 +1382,7 @@ matches the snapshot:
         tier: ks-control-plane
       name: kubevuln-cronjob-template
       namespace: kubescape
-  47: |
+  35: |
     apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
@@ -1946,7 +1421,7 @@ matches the snapshot:
       policyTypes:
         - Ingress
         - Egress
-  48: |
+  36: |
     apiVersion: v1
     data:
       cronjobTemplate: "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: registry-scheduler\n  namespace: kubescape\n  labels:\n    app: registry-scheduler\n    tier: ks-control-plane\n    armo.tier: \"registry-scan\"\nspec:\n  schedule: \"0 0 * * *\"\n  jobTemplate:\n    spec:\n      template:\n        metadata:\n          labels:\n            armo.tier: \"registry-scan\"\n        spec:\n          containers:\n          - name: registry-scheduler\n            image: \"quay.io/kubescape/http-request:v0.0.14\"\n            imagePullPolicy: IfNotPresent\n            securityContext:\n              allowPrivilegeEscalation: false\n              readOnlyRootFilesystem: true\n              runAsNonRoot: true\n              runAsUser: 100\n            resources:\n              limits:\n                cpu: 10m\n                memory: 20Mi\n              requests:\n                cpu: 1m\n                memory: 10Mi\n            args: \n              - -method=post\n              - -scheme=http\n              - -host=operator:4002\n              - -path=v1/triggerAction\n              - -headers=\"Content-Type:application/json\"\n              - -path-body=/home/ks/request-body.json\n            volumeMounts:\n              - name: \"request-body-volume\"\n                mountPath: /home/ks/request-body.json\n                subPath: request-body.json\n                readOnly: true\n          restartPolicy: Never\n          automountServiceAccountToken: false\n          volumes:\n            - name: \"request-body-volume\" # placeholder\n              configMap:\n                name: registry-scheduler"
@@ -1957,7 +1432,7 @@ matches the snapshot:
         tier: ks-control-plane
       name: registry-scan-cronjob-template
       namespace: kubescape
-  49: |
+  37: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
@@ -1989,7 +1464,7 @@ matches the snapshot:
           - list
           - patch
           - delete
-  50: |
+  38: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -2003,7 +1478,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: operator
         namespace: kubescape
-  51: |
+  39: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -2019,7 +1494,7 @@ matches the snapshot:
       selector:
         app: operator
       type: ClusterIP
-  52: |
+  40: |
     apiVersion: v1
     automountServiceAccountToken: false
     kind: ServiceAccount
@@ -2028,10 +1503,10 @@ matches the snapshot:
         app: operator
       name: operator
       namespace: kubescape
-  53: |
+  41: |
     apiVersion: v1
     data:
-      otel-collector-config.yaml: "\n# receivers configure how data gets into the Collector.\nreceivers:\n  otlp:\n    protocols:\n      grpc:\n      http:\n  hostmetrics:\n    collection_interval: 30s\n    scrapers:\n      cpu:\n      memory:\n\n# processors specify what happens with the received data.\nprocessors:\n  attributes/ksCloud:\n    actions:\n      - key: account_id\n        value: \"9e6c0c2c-6bd0-4919-815b-55030de7c9a0\"\n        action: upsert\n      - key: cluster_name\n        value: \"kind-kind\"\n        action: upsert\n  batch:\n    send_batch_size: 10000\n    timeout: 10s\n\n# exporters configure how to send processed data to one or more backends.\nexporters:\n  otlp/ksCloud:\n    endpoint: ${env:CLOUD_OTEL_COLLECTOR_URL}\n    tls:\n      insecure: false\n  otlp:\n    endpoint: \"otelCollector:4317\"\n    tls:\n      insecure: true\n    headers:\n      uptrace-dsn: \n\n# service pulls the configured receivers, processors, and exporters together into\n# processing pipelines. Unused receivers/processors/exporters are ignored.\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp\n    metrics/2:\n      receivers: [hostmetrics]\n      processors: [attributes/ksCloud, batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp\n    metrics:\n      receivers: [otlp]\n      processors: [batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp\n    logs:\n      receivers: [otlp]\n      processors: [batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp"
+      otel-collector-config.yaml: "\n# receivers configure how data gets into the Collector.\nreceivers:\n  otlp:\n    protocols:\n      grpc:\n      http:\n  hostmetrics:\n    collection_interval: 30s\n    scrapers:\n      cpu:\n      memory:\n\n# processors specify what happens with the received data.\nprocessors:\n  attributes/ksCloud:\n    actions:\n      - key: account_id\n        value: \"9e6c0c2c-6bd0-4919-815b-55030de7c9a0\"\n        action: upsert\n      - key: cluster_name\n        value: \"kind-kind\"\n        action: upsert\n  batch:\n    send_batch_size: 10000\n    timeout: 10s\n\n# exporters configure how to send processed data to one or more backends.\nexporters:\n  otlp/ksCloud:\n    endpoint: \"\"\n    tls:\n      insecure: false\n  otlp:\n    endpoint: \"otelCollector:4317\"\n    tls:\n      insecure: true\n    headers:\n      uptrace-dsn: \n\n# service pulls the configured receivers, processors, and exporters together into\n# processing pipelines. Unused receivers/processors/exporters are ignored.\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp\n    metrics/2:\n      receivers: [hostmetrics]\n      processors: [attributes/ksCloud, batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp\n    metrics:\n      receivers: [otlp]\n      processors: [batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp\n    logs:\n      receivers: [otlp]\n      processors: [batch]\n      exporters:\n        - otlp/ksCloud\n        - otlp"
     kind: ConfigMap
     metadata:
       labels:
@@ -2039,7 +1514,7 @@ matches the snapshot:
         tier: ks-control-plane
       name: otel-collector-config
       namespace: kubescape
-  54: |
+  42: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2120,7 +1595,7 @@ matches the snapshot:
             - configMap:
                 name: otel-collector-config
               name: otel-collector-config-volume
-  55: |
+  43: |
     apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
@@ -2153,7 +1628,7 @@ matches the snapshot:
       policyTypes:
         - Ingress
         - Egress
-  56: |
+  44: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -2170,7 +1645,7 @@ matches the snapshot:
       selector:
         app: otel-collector
       type: ClusterIP
-  57: |
+  45: |
     apiVersion: v1
     data:
       proxy.crt: foo
@@ -2179,116 +1654,7 @@ matches the snapshot:
       name: kubescape-proxy-certificate
       namespace: kubescape
     type: Opaque
-  58: |
-    apiVersion: batch/v1
-    kind: Job
-    metadata:
-      annotations:
-        helm.sh/hook: pre-install,pre-upgrade
-        helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-        helm.sh/hook-weight: "1"
-      labels:
-        app: service-discovery
-        app.kubernetes.io/instance: RELEASE-NAME
-        app.kubernetes.io/name: service-discovery
-        tier: ks-control-plane
-      name: service-discovery
-      namespace: kubescape
-    spec:
-      template:
-        metadata:
-          labels:
-            app: service-discovery
-            app.kubernetes.io/instance: RELEASE-NAME
-            app.kubernetes.io/managed-by: Helm
-            app.kubernetes.io/name: service-discovery
-            helm.sh/chart: kubescape-operator-1.15.3
-            helm.sh/revision: "0"
-            otel: enabled
-            tier: ks-control-plane
-          name: RELEASE-NAME
-        spec:
-          containers:
-            - args:
-                - |
-                  kubectl create configmap ks-cloud-config --from-literal=metrics=$(jq -r '.response.metrics' /data/services.json) --from-file=services=/data/services.json -n kubescape --dry-run=client -o yaml | kubectl apply -f -
-              command:
-                - /bin/sh
-                - -c
-              image: bitnami/kubectl:1.27.5
-              imagePullPolicy: IfNotPresent
-              name: update-configmap
-              volumeMounts:
-                - mountPath: /data
-                  name: shared-data
-          initContainers:
-            - args:
-                - -method=get
-                - -scheme=https
-                - -host=api.armosec.io
-                - -path=api/v1/servicediscovery
-                - -path-output=/data/services.json
-              env: null
-              image: quay.io/kubescape/http-request:v0.2.2
-              imagePullPolicy: IfNotPresent
-              name: url-discovery
-              volumeMounts:
-                - mountPath: /data
-                  name: shared-data
-          restartPolicy: Never
-          serviceAccountName: service-discovery
-          volumes:
-            - emptyDir: {}
-              name: shared-data
-  59: |
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: Role
-    metadata:
-      annotations:
-        helm.sh/hook: pre-install,pre-upgrade
-        helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-        helm.sh/hook-weight: "0"
-      name: service-discovery
-      namespace: kubescape
-    rules:
-      - apiGroups:
-          - ""
-        resources:
-          - configmaps
-        verbs:
-          - update
-          - create
-          - patch
-          - get
-          - list
-  60: |
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: RoleBinding
-    metadata:
-      annotations:
-        helm.sh/hook: pre-install,pre-upgrade
-        helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-        helm.sh/hook-weight: "0"
-      name: service-discovery
-    roleRef:
-      apiGroup: rbac.authorization.k8s.io
-      kind: Role
-      name: service-discovery
-    subjects:
-      - kind: ServiceAccount
-        name: service-discovery
-        namespace: kubescape
-  61: |
-    apiVersion: v1
-    kind: ServiceAccount
-    metadata:
-      annotations:
-        helm.sh/hook: pre-install,pre-upgrade
-        helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
-        helm.sh/hook-weight: "0"
-      name: service-discovery
-      namespace: kubescape
-  62: |
+  46: |
     apiVersion: apiregistration.k8s.io/v1
     kind: APIService
     metadata:
@@ -2302,7 +1668,7 @@ matches the snapshot:
         namespace: kubescape
       version: v1beta1
       versionPriority: 15
-  63: |
+  47: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
@@ -2334,7 +1700,7 @@ matches the snapshot:
           - get
           - watch
           - list
-  64: |
+  48: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2347,7 +1713,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: storage
         namespace: kubescape
-  65: |
+  49: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
@@ -2360,7 +1726,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: storage
         namespace: kubescape
-  66: |
+  50: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
@@ -2438,11 +1804,9 @@ matches the snapshot:
                 items:
                   - key: clusterData
                     path: clusterData.json
-                  - key: services
-                    path: services.json
                 name: ks-cloud-config
               name: ks-cloud-config
-  67: |
+  51: |
     apiVersion: v1
     kind: PersistentVolumeClaim
     metadata:
@@ -2458,7 +1822,7 @@ matches the snapshot:
       resources:
         requests:
           storage: 5Gi
-  68: |
+  52: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
@@ -2472,7 +1836,7 @@ matches the snapshot:
       - kind: ServiceAccount
         name: storage
         namespace: kubescape
-  69: |
+  53: |
     apiVersion: v1
     kind: Service
     metadata:
@@ -2487,7 +1851,7 @@ matches the snapshot:
         app.kubernetes.io/component: apiserver
         app.kubernetes.io/name: storage
         app.kubernetes.io/part-of: kubescape-storage
-  70: |
+  54: |
     apiVersion: v1
     kind: ServiceAccount
     metadata:
